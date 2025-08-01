@@ -1,0 +1,6 @@
+faster-whisper
+torch
+git+https://github.com/resemble-ai/chatterbox.git
+gradio
+uvicorn
+fastapi

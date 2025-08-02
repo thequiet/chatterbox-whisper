@@ -10,3 +10,4 @@ librosa
 soundfile
 numpy
 requests
+gunicorn

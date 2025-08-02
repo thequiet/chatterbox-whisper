@@ -1,11 +1,11 @@
-FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
+# Dockerfile optimized for Cloud Run (CPU-only)
+FROM python:3.10-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
-    python3-pip \
-    python3-dev \
     git \
     ffmpeg \
     wget \
@@ -21,24 +21,29 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Copy requirements first for better caching
-COPY requirements.txt .
+COPY requirements-cpu.txt .
 
 # Install Python packages with better error handling
 RUN pip3 install --upgrade pip setuptools wheel && \
-    pip3 install --no-cache-dir --no-input -r requirements.txt
+    pip3 install --no-cache-dir --no-input -r requirements-cpu.txt
 
 # Copy application files
-COPY app.py .
+COPY app-cloudrun.py ./app.py
 COPY whisper_demo.py .
 COPY chatterbox_demo.py .
 
 # Create temp directory for audio files
 RUN mkdir -p /tmp/audio
 
-EXPOSE 7860 7861
+# Cloud Run port
+ENV PORT=8080
+EXPOSE 8080
 
 # Add healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:7860/health || exit 1
+    CMD curl -f http://localhost:$PORT/health || exit 1
 
-CMD ["python3", "app.py"]
+# Use gunicorn for production
+RUN pip install gunicorn
+
+CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 app:app

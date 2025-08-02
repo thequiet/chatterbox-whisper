@@ -1,8 +1,16 @@
-FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
+# Docker Hub Automated Build Configuration
+# This file can be used with Docker Hub's automated build feature
+
+# Build hooks for multi-stage builds
+ARG BUILDPLATFORM
+ARG TARGETPLATFORM
+
+FROM --platform=$BUILDPLATFORM nvidia/cuda:12.2.0-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     python3-pip \
     python3-dev \
@@ -34,6 +42,11 @@ COPY chatterbox_demo.py .
 
 # Create temp directory for audio files
 RUN mkdir -p /tmp/audio
+
+# Add labels for better Docker Hub integration
+LABEL maintainer="your-email@example.com"
+LABEL description="Chatterbox TTS and Faster-Whisper API with Gradio interface"
+LABEL version="1.0.0"
 
 EXPOSE 7860 7861
 

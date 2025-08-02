@@ -1,0 +1,116 @@
+# Enhanced GitHub Actions workflow for fast cloud builds
+name: Cloud Build and Push to Docker Hub
+
+on:
+  push:
+    branches: [ main, master, develop ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:  # Allow manual triggering
+
+env:
+  DOCKER_HUB_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
+  IMAGE_NAME: chatterbox-whisper
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        platform: [linux/amd64, linux/arm64]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      with:
+        platforms: linux/amd64,linux/arm64
+        driver-opts: |
+          network=host
+        
+    - name: Login to Docker Hub
+      if: github.event_name != 'pull_request'
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_HUB_USERNAME }}
+        password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+    
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.DOCKER_HUB_USERNAME }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=raw,value=latest,enable={{is_default_branch}}
+          type=sha,prefix={{branch}}-
+        labels: |
+          org.opencontainers.image.title=Chatterbox Whisper
+          org.opencontainers.image.description=AI TTS and STT with FastAPI and Gradio
+          org.opencontainers.image.vendor=Your Name
+    
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: ${{ matrix.platform }}
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        build-args: |
+          BUILDKIT_INLINE_CACHE=1
+        
+    - name: Generate deployment info
+      if: github.event_name != 'pull_request'
+      run: |
+        echo "## 🚀 Deployment Complete!" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Docker Image Published:" >> $GITHUB_STEP_SUMMARY
+        echo "- **Repository**: https://hub.docker.com/r/${{ env.DOCKER_HUB_USERNAME }}/${{ env.IMAGE_NAME }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Tag**: \`${{ steps.meta.outputs.tags }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Quick Run Commands:" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+        echo "# Pull and run" >> $GITHUB_STEP_SUMMARY
+        echo "docker pull ${{ env.DOCKER_HUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
+        echo "docker run --rm -p 7860:7860 -p 7861:7861 ${{ env.DOCKER_HUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Access URLs:" >> $GITHUB_STEP_SUMMARY
+        echo "- FastAPI: http://localhost:7860/docs" >> $GITHUB_STEP_SUMMARY
+        echo "- Gradio: http://localhost:7861" >> $GITHUB_STEP_SUMMARY
+        echo "- Health: http://localhost:7860/health" >> $GITHUB_STEP_SUMMARY
+
+  # Test the built image
+  test-image:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    
+    steps:
+    - name: Test Docker image
+      run: |
+        # Pull the image
+        docker pull ${{ env.DOCKER_HUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+        
+        # Run health check
+        docker run --rm -d --name test-container \
+          -p 7860:7860 \
+          ${{ env.DOCKER_HUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+        
+        # Wait for startup
+        sleep 30
+        
+        # Test health endpoint
+        curl -f http://localhost:7860/health || exit 1
+        
+        # Cleanup
+        docker stop test-container

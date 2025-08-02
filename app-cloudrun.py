@@ -6,8 +6,6 @@ import os
 import logging
 from whisper_demo import transcribe_audio
 from chatterbox_demo import synthesize_tts
-import gradio as gr
-import threading
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -17,15 +15,16 @@ app = FastAPI(title="Chatterbox Whisper API", version="1.0.0")
 
 @app.get("/")
 async def root():
-    return {"message": "Chatterbox Whisper API is running", "status": "healthy"}
+    return {"message": "Chatterbox Whisper API is running on Cloud Run", "status": "healthy"}
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "services": ["transcription", "tts"]}
+    return {"status": "healthy", "services": ["transcription", "tts"], "platform": "cloud-run"}
 
 @app.post("/transcribe")
 async def transcribe(file: UploadFile = File(...)):
     """Transcribe audio file to text"""
+    tmp_path = None
     try:
         # Validate file type
         if not file.content_type or not file.content_type.startswith('audio/'):
@@ -44,7 +43,7 @@ async def transcribe(file: UploadFile = File(...)):
     
     except Exception as e:
         logger.error(f"Transcription error: {e}")
-        if os.path.exists(tmp_path):
+        if tmp_path and os.path.exists(tmp_path):
             os.unlink(tmp_path)
         raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
 
@@ -72,42 +71,8 @@ async def synthesize(text: str = Form(...)):
         logger.error(f"Synthesis error: {e}")
         raise HTTPException(status_code=500, detail=f"Synthesis failed: {str(e)}")
 
-def launch_gradio():
-    """Launch Gradio interface"""
-    try:
-        with gr.Blocks(title="Chatterbox TTS and Faster-Whisper Demo") as demo:
-            gr.Markdown("## 🗣️ Chatterbox TTS and Faster-Whisper Demo")
-
-            with gr.Tab("Transcribe Audio (Whisper)"):
-                gr.Markdown("Upload an audio file to transcribe it to text using Faster-Whisper")
-                audio_input = gr.Audio(type="filepath", label="Upload Audio File")
-                transcribe_btn = gr.Button("Transcribe", variant="primary")
-                transcription_output = gr.Textbox(label="Transcription", lines=5, placeholder="Transcribed text will appear here...")
-                transcribe_btn.click(transcribe_audio, inputs=audio_input, outputs=transcription_output)
-
-            with gr.Tab("Synthesize Speech (Chatterbox)"):
-                gr.Markdown("Enter text to convert it to speech using Chatterbox TTS")
-                text_input = gr.Textbox(
-                    label="Enter text", 
-                    lines=3, 
-                    placeholder="Type your text here...",
-                    value="Hello, this is a test of the chatterbox text to speech system."
-                )
-                synthesize_btn = gr.Button("Synthesize", variant="primary")
-                audio_output = gr.Audio(label="Generated Audio")
-                synthesize_btn.click(synthesize_tts, inputs=text_input, outputs=audio_output)
-
-        logger.info("Starting Gradio interface on port 7861")
-        demo.launch(server_name="0.0.0.0", server_port=7861, share=False)
-    
-    except Exception as e:
-        logger.error(f"Gradio launch error: {e}")
-
-# Start Gradio in a separate thread
-threading.Thread(target=launch_gradio, daemon=True).start()
-
 if __name__ == "__main__":
     import os
-    port = int(os.environ.get("PORT", 7860))
-    logger.info(f"Starting FastAPI server on port {port}")
+    port = int(os.environ.get("PORT", 8080))
+    logger.info(f"Starting FastAPI server on port {port} (Cloud Run mode)")
     uvicorn.run(app, host="0.0.0.0", port=port)

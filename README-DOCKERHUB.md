@@ -34,9 +34,16 @@ chmod +x cloud-deploy.sh
 ./cloud-deploy.sh
 ```
 
-Choose option 1 to trigger GitHub Actions cloud build, or option 3 to set up automated builds.
+Choose option 1 to trigger GitHub Actions cloud build.
+
+**Or for quick Docker Hub setup**:
+```bash
+./dockerhub-quick-setup.sh  # Updated for 2025 - no more GitHub integration
+```
 
 **Benefits**: 5-8 min builds vs 20-30 min local, no local resources used, automatic multi-platform builds.
+
+**Note**: Docker Hub removed direct GitHub integration in 2025, but GitHub Actions is actually better!
 
 ### Manual Build and Push (Slower)
 

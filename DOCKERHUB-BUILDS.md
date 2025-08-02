@@ -1,38 +1,49 @@
-# Docker Hub Automated Builds - Complete Guide
+# Docker Hub + GitHub Actions - Complete Guide
 
-Yes! Docker Hub can absolutely build your image automatically using their **Automated Builds** service. This is perfect for cloud building without any local resources.
+⚠️ **Important Update**: Docker Hub has removed direct GitHub integration for new repositories. But don't worry - **GitHub Actions is actually better!**
 
-## 🚀 Quick Setup
+## 🚀 Current Best Practice (2025)
+
+### The Modern Approach: GitHub Actions → Docker Hub
+
+Instead of Docker Hub's old automated builds, we now use GitHub Actions to build and push to Docker Hub. This gives you:
+
+✅ **Faster builds** (5-8 min vs 10-15 min)  
+✅ **Multi-platform support** (AMD64 + ARM64)  
+✅ **Better caching** and debugging  
+✅ **More control** over the build process  
+✅ **Free for public repositories**  
+
+## 🔧 Setup Process
+
+### Step 1: Create Docker Hub Repository (Manual)
+
+1. **Go to Docker Hub**: https://hub.docker.com/
+2. **Click "Create Repository"**
+3. **Repository name**: `chatterbox-whisper`
+4. **Visibility**: Public (for free unlimited pulls)
+5. **Description**: "AI TTS and STT with FastAPI and Gradio"
+6. **Click "Create"**
+
+### Step 2: Setup GitHub Actions (Automated Building)
 
 ```bash
-chmod +x dockerhub-setup.sh
-./dockerhub-setup.sh
+./cloud-deploy.sh  # Choose option 1
 ```
 
-Choose option 1 to setup GitHub, then option 2 for Docker Hub configuration.
+Or manual setup:
 
-## 🔧 How Docker Hub Automated Builds Work
+1. **Add Docker Hub secrets to GitHub**:
+   - Go to: https://github.com/YOUR_USERNAME/chatterbox-whisper/settings/secrets/actions
+   - Add `DOCKER_HUB_USERNAME` (your Docker Hub username)
+   - Add `DOCKER_HUB_ACCESS_TOKEN` (create at hub.docker.com → Account Settings → Security → New Access Token)
 
-### 1. **Source Integration**
-- Connects to your GitHub/Bitbucket repository
-- Monitors for code changes automatically
-- Triggers builds on every push or tag
-
-### 2. **Build Rules** (Recommended Configuration)
-
-| Trigger Type | Source Branch/Tag | Docker Tag | Build Time |
-|--------------|-------------------|------------|------------|
-| **Branch** | `main` | `latest` | ~10-15 min |
-| **Branch** | `develop` | `dev` | ~10-15 min |
-| **Git Tag** | `v1.0.0` | `1.0.0` | ~10-15 min |
-| **Git Tag** | `v1.0.0` | `1.0.0-gpu` | ~10-15 min |
-
-### 3. **Automatic Process**
-1. You push code to GitHub
-2. Docker Hub detects the change
-3. Builds start automatically in Docker Hub's cloud
-4. Built images are published to your repository
-5. You get email notifications on completion
+2. **Push code to trigger build**:
+   ```bash
+   git add .
+   git commit -m "Trigger first build"
+   git push origin main
+   ```
 
 ## 🆚 Docker Hub vs GitHub Actions Comparison
 

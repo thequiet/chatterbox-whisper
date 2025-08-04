@@ -29,7 +29,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && python -m pip install --upgrade pip setuptools wheel
 
 # Install PyTorch and torchaudio with CUDA 12.1 support
-RUN pip install torch==2.6.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu121
+RUN pip install torch==2.5.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121
 
 # Install ChatterboxTTS and core dependencies
 RUN pip install chatterbox-tts gradio faster-whisper uvicorn fastapi python-multipart runpod

@@ -1,8 +1,8 @@
 faster-whisper
 torch
 torchaudio
-# Note: Chatterbox may not be available, will fallback to alternatives
-# git+https://github.com/resemble-ai/chatterbox.git
+# Chatterbox TTS - Resemble AI's production-grade open source TTS
+chatterbox-tts
 gradio
 uvicorn
 fastapi
@@ -11,7 +11,14 @@ librosa
 soundfile
 numpy
 requests
+# Additional dependencies for Chatterbox
+s3tokenizer
+transformers==4.46.3
+diffusers==0.29.0
+resemble-perth==1.0.1
+conformer==0.3.2
+safetensors==0.5.3
+# Fallback TTS libraries (only if chatterbox fails)
 pyttsx3
-# Alternative TTS libraries for better quality
 TTS
 gTTS

@@ -5,7 +5,7 @@ import tempfile
 import os
 import logging
 from whisper_demo import transcribe_audio
-from chatterbox_demo import synthesize_tts, get_voice_options, clone_voice_from_audio
+from chatterbox_demo import synthesize_tts, get_voice_options, clone_voice_from_audio, convert_voice
 import gradio as gr
 import threading
 
@@ -21,10 +21,8 @@ def safe_transcribe_audio(audio_path):
     try:
         if not audio_path:
             return "Error: No audio file provided"
-        
         if not os.path.exists(audio_path):
             return "Error: Audio file not found"
-        
         result = transcribe_audio(audio_path)
         return result if result else "Error: Transcription failed"
     except Exception as e:
@@ -36,9 +34,7 @@ def safe_synthesize_tts(text, voice_selection="Default (Fallback)"):
     try:
         if not text or not text.strip():
             return None, "Error: Please provide text to synthesize"
-        
         audio_path = synthesize_tts(text, voice_selection)
-        
         if audio_path and os.path.exists(audio_path):
             return audio_path, "✅ Speech generated successfully!"
         else:
@@ -52,18 +48,29 @@ def safe_clone_voice(text, reference_audio, voice_name="Custom Voice"):
     try:
         if not text or not text.strip():
             return None, "Error: Please provide text to synthesize"
-        
         if not reference_audio:
             return safe_synthesize_tts(text)  # Fallback to normal TTS
-        
         audio_path = clone_voice_from_audio(text, reference_audio, voice_name)
-        
         if audio_path and os.path.exists(audio_path):
             return audio_path, f"✅ Voice cloning completed for '{voice_name}'"
         else:
             return None, "❌ Voice cloning failed"
     except Exception as e:
         logger.error(f"Gradio voice cloning error: {e}")
+        return None, f"❌ Error: {str(e)}"
+
+def safe_convert_voice(input_audio, target_audio):
+    """Safe wrapper for voice conversion to prevent Gradio crashes"""
+    try:
+        if not input_audio:
+            return None, "Error: Please provide input audio to convert"
+        audio_path = convert_voice(input_audio, target_audio)
+        if audio_path and os.path.exists(audio_path):
+            return audio_path, "✅ Voice conversion completed successfully!"
+        else:
+            return None, "❌ Voice conversion failed or not available"
+    except Exception as e:
+        logger.error(f"Gradio voice conversion error: {e}")
         return None, f"❌ Error: {str(e)}"
 
 def safe_refresh_voices():
@@ -74,7 +81,6 @@ def safe_refresh_voices():
         global tts_system, available_voices
         tts_system = None
         available_voices = []
-        
         new_choices = get_voice_options()
         return gr.Dropdown.update(choices=new_choices, value=new_choices[0] if new_choices else "Default (Fallback)")
     except Exception as e:
@@ -98,7 +104,7 @@ async def health():
         voice_count = 0
     
     return {
-        "status": "healthy", 
+        "status": "healthy",
         "services": {
             "transcription": "whisper",
             "tts": tts_status,
@@ -145,8 +151,8 @@ async def synthesize(text: str = Form(...)):
             raise HTTPException(status_code=500, detail="Audio synthesis failed")
         
         return FileResponse(
-            audio_path, 
-            media_type="audio/wav", 
+            audio_path,
+            media_type="audio/wav",
             filename="output.wav",
             headers={"Content-Disposition": "attachment; filename=output.wav"}
         )
@@ -171,14 +177,14 @@ def launch_gradio():
         
         with gr.Blocks(title="Chatterbox TTS and Faster-Whisper Demo", theme=gr.themes.Soft()) as demo:
             gr.Markdown("## 🗣️ Chatterbox TTS and Faster-Whisper Demo")
-
+            
             with gr.Tab("🎧 Transcribe Audio (Whisper)"):
                 gr.Markdown("### Upload an audio file to transcribe it to text using Faster-Whisper")
                 
                 with gr.Row():
                     with gr.Column():
                         audio_input = gr.Audio(
-                            type="filepath", 
+                            type="filepath",
                             label="Upload Audio File",
                             sources=["upload", "microphone"]
                         )
@@ -186,9 +192,10 @@ def launch_gradio():
                     
                     with gr.Column():
                         transcription_output = gr.Textbox(
-                            label="Transcription Result", 
-                            lines=8, 
+                            label="Transcription Result",
+                            lines=8,
                             placeholder="Transcribed text will appear here...",
+                            interactive=True,
                             show_copy_button=True
                         )
                 
@@ -200,25 +207,24 @@ def launch_gradio():
                 )
                 
                 transcribe_btn.click(
-                    fn=safe_transcribe_audio, 
-                    inputs=audio_input, 
+                    fn=safe_transcribe_audio,
+                    inputs=audio_input,
                     outputs=transcription_output,
                     show_progress=True
                 )
-
+            
             with gr.Tab("🗣️ Text-to-Speech (Standard)"):
                 gr.Markdown("### Convert text to speech using available voices")
                 
                 with gr.Row():
                     with gr.Column():
                         text_input = gr.Textbox(
-                            label="Enter text to synthesize", 
-                            lines=4, 
+                            label="Enter text to synthesize",
+                            lines=4,
                             placeholder="Type your text here...",
                             value="Hello! This is a test of the Chatterbox text-to-speech system.",
                             max_lines=10
                         )
-                        
                         # Voice selection dropdown
                         voice_dropdown = gr.Dropdown(
                             choices=get_voice_options(),
@@ -226,9 +232,30 @@ def launch_gradio():
                             label="Select Voice",
                             info="Choose from available voices"
                         )
-                        
                         # Refresh voices button
                         refresh_voices_btn = gr.Button("🔄 Refresh Voices", size="sm")
+                        
+                        # ChatterboxTTS advanced settings
+                        with gr.Accordion("Advanced ChatterboxTTS Settings", open=False):
+                            exaggeration = gr.Slider(
+                                0.25, 2, step=0.05, label="Exaggeration (0.5 = neutral)", value=0.5
+                            )
+                            temperature = gr.Slider(
+                                0.05, 5, step=0.05, label="Temperature", value=0.8
+                            )
+                            cfg_weight = gr.Slider(
+                                0.0, 1, step=0.05, label="CFG Weight", value=0.5
+                            )
+                            min_p = gr.Slider(
+                                0.00, 1.00, step=0.01, label="Min P", value=0.05
+                            )
+                            top_p = gr.Slider(
+                                0.00, 1.00, step=0.01, label="Top P", value=1.00
+                            )
+                            repetition_penalty = gr.Slider(
+                                1.00, 2.00, step=0.1, label="Repetition Penalty", value=1.2
+                            )
+                            seed_num = gr.Number(value=0, label="Random seed (0 for random)")
                         
                         synthesize_btn = gr.Button("🎵 Generate Speech", variant="primary", size="lg")
                     
@@ -238,7 +265,6 @@ def launch_gradio():
                             autoplay=False,
                             show_download_button=True
                         )
-                        
                         status_output = gr.Textbox(
                             label="Status",
                             lines=2,
@@ -261,7 +287,7 @@ def launch_gradio():
                 def refresh_voices():
                     return gr.Dropdown(choices=get_voice_options())
                 
-                def synthesize_with_status(text, voice):
+                def synthesize_with_status(text, voice, exag, temp, cfg, min_p_val, top_p_val, rep_pen, seed):
                     try:
                         if not text or not text.strip():
                             return None, "❌ Please enter some text to synthesize."
@@ -269,107 +295,96 @@ def launch_gradio():
                         # Limit text length to prevent crashes
                         if len(text) > 5000:
                             text = text[:5000] + "..."
-                            status_msg = "⚠️ Text truncated to 5000 characters.\n"
-                        else:
-                            status_msg = ""
                         
-                        audio_file = synthesize_tts(text, voice)
+                        status_msg = f"🎵 Generating speech with {voice}..."
+                        
+                        # Pass advanced parameters to synthesize_tts
+                        audio_file = synthesize_tts(
+                            text, voice,
+                            exaggeration=exag,
+                            temperature=temp,
+                            cfg_weight=cfg,
+                            min_p=min_p_val,
+                            top_p=top_p_val,
+                            repetition_penalty=rep_pen,
+                            seed_num=seed
+                        )
+                        
                         if audio_file and os.path.exists(audio_file):
-                            return audio_file, status_msg + f"✅ Successfully generated speech using {voice}"
+                            status_msg += "\n✅ Speech generated successfully!"
+                            return audio_file, status_msg
                         else:
-                            return None, status_msg + "❌ Failed to generate speech. Using fallback."
+                            status_msg += "\n❌ Speech synthesis failed."
+                            return None, status_msg
                     except Exception as e:
-                        logger.error(f"TTS synthesis error: {e}")
+                        logger.error(f"Synthesis error in Gradio: {e}")
                         return None, f"❌ Error: {str(e)}"
                 
-                refresh_voices_btn.click(
-                    fn=refresh_voices,
-                    outputs=voice_dropdown
-                )
-                
+                refresh_voices_btn.click(refresh_voices, outputs=voice_dropdown)
                 synthesize_btn.click(
                     fn=synthesize_with_status,
-                    inputs=[text_input, voice_dropdown],
+                    inputs=[text_input, voice_dropdown, exaggeration, temperature, 
+                           cfg_weight, min_p, top_p, repetition_penalty, seed_num],
                     outputs=[audio_output, status_output],
                     show_progress=True
                 )
-
+            
             with gr.Tab("🎭 Voice Cloning"):
-                gr.Markdown("### Clone a voice from reference audio")
-                gr.Markdown("*Upload a clear audio sample (5-30 seconds) to clone the speaker's voice*")
+                gr.Markdown("### Clone a voice from reference audio and generate speech")
                 
                 with gr.Row():
                     with gr.Column():
                         clone_text_input = gr.Textbox(
                             label="Text to synthesize with cloned voice",
-                            lines=3,
+                            lines=4,
                             placeholder="Enter the text you want the cloned voice to say...",
-                            value="Hello, this is a demonstration of voice cloning technology."
+                            value="Hello, this is a demonstration of voice cloning using Chatterbox TTS."
                         )
-                        
                         reference_audio = gr.Audio(
+                            sources=["upload", "microphone"],
                             type="filepath",
-                            label="Reference Audio (for voice cloning)",
-                            sources=["upload", "microphone"]
+                            label="Reference Audio for Voice Cloning",
+                            info="Upload an audio file of the voice you want to clone"
                         )
-                        
-                        gr.Markdown("*Upload clear audio of the target speaker (5-30 seconds recommended)*")
-                        
                         clone_voice_name = gr.Textbox(
-                            label="Voice Name",
-                            placeholder="e.g., John's Voice",
-                            value="Custom Cloned Voice"
+                            label="Voice Name (Optional)",
+                            placeholder="e.g., 'John's Voice'",
+                            value="Custom Voice"
                         )
-                        
                         clone_btn = gr.Button("🎭 Clone Voice & Generate", variant="primary", size="lg")
                     
                     with gr.Column():
                         cloned_audio_output = gr.Audio(
-                            label="Cloned Voice Audio",
+                            label="Cloned Voice Output",
                             autoplay=False,
                             show_download_button=True
                         )
-                        
                         clone_status_output = gr.Textbox(
                             label="Cloning Status",
-                            lines=4,
-                            placeholder="Cloning status will appear here...",
+                            lines=3,
+                            placeholder="Status will appear here...",
                             interactive=False
                         )
                 
-                def clone_with_status(text, reference_path, voice_name):
+                def clone_with_status(text, ref_audio, voice_name):
                     try:
                         if not text or not text.strip():
-                            return None, "❌ Please enter text to synthesize."
+                            return None, "❌ Please enter some text to synthesize."
                         
-                        # Limit text length
-                        if len(text) > 2000:
-                            text = text[:2000] + "..."
-                            
-                        if not reference_path:
-                            return None, "❌ Please upload reference audio for voice cloning."
+                        status_msg = f"🎭 Cloning voice '{voice_name}'..."
                         
-                        # Validate file exists and has reasonable size
-                        if not os.path.exists(reference_path):
-                            return None, "❌ Reference audio file not found."
-                            
-                        file_size = os.path.getsize(reference_path)
-                        if file_size > 50 * 1024 * 1024:  # 50MB limit
-                            return None, "❌ Reference audio file too large (max 50MB)."
-                        
-                        status_msg = f"🎭 Attempting to clone voice: {voice_name}\n"
-                        status_msg += f"📁 Reference audio: {os.path.basename(reference_path)}\n"
-                        status_msg += f"📏 File size: {file_size / 1024 / 1024:.1f} MB\n"
-                        
-                        audio_file = clone_voice_from_audio(text, reference_path, voice_name)
+                        audio_file = clone_voice_from_audio(text, ref_audio, voice_name)
                         
                         if audio_file and os.path.exists(audio_file):
-                            status_msg += "✅ Voice cloning completed successfully!"
-                            return audio_file, status_msg
+                            if ref_audio:
+                                status_msg += "✅ Voice cloning completed successfully!"
+                                return audio_file, status_msg
+                            else:
+                                status_msg += "⚠️ Voice cloning not supported, using standard TTS."
+                                return audio_file, status_msg
                         else:
-                            status_msg += "⚠️ Voice cloning not supported, using standard TTS."
-                            return audio_file, status_msg
-                            
+                            status_msg += "❌ Voice cloning failed."
+                            return None, status_msg
                     except Exception as e:
                         logger.error(f"Voice cloning error: {e}")
                         return None, f"❌ Voice cloning error: {str(e)}"
@@ -380,7 +395,65 @@ def launch_gradio():
                     outputs=[cloned_audio_output, clone_status_output],
                     show_progress=True
                 )
-
+            
+            with gr.Tab("🔄 Voice Conversion"):
+                gr.Markdown("### Convert one voice to another using ChatterboxVC")
+                
+                with gr.Row():
+                    with gr.Column():
+                        input_audio = gr.Audio(
+                            sources=["upload", "microphone"],
+                            type="filepath",
+                            label="Input Audio",
+                            info="Audio to convert"
+                        )
+                        target_audio = gr.Audio(
+                            sources=["upload", "microphone"],
+                            type="filepath",
+                            label="Target Voice Audio (Optional)",
+                            info="Leave empty for default voice conversion",
+                            value=None
+                        )
+                        convert_btn = gr.Button("🔄 Convert Voice", variant="primary", size="lg")
+                        
+                    with gr.Column():
+                        converted_audio_output = gr.Audio(
+                            label="Converted Audio",
+                            autoplay=False,
+                            show_download_button=True
+                        )
+                        convert_status_output = gr.Textbox(
+                            label="Conversion Status",
+                            lines=2,
+                            placeholder="Status will appear here...",
+                            interactive=False
+                        )
+                
+                def convert_with_status(input_audio_path, target_audio_path):
+                    try:
+                        if not input_audio_path:
+                            return None, "❌ Please provide input audio to convert."
+                            
+                        status_msg = "🔄 Converting voice..."
+                        audio_file = convert_voice(input_audio_path, target_audio_path)
+                        
+                        if audio_file and os.path.exists(audio_file):
+                            status_msg += "\n✅ Voice conversion completed successfully!"
+                            return audio_file, status_msg
+                        else:
+                            status_msg += "\n⚠️ Voice conversion not available or failed."
+                            return None, status_msg
+                    except Exception as e:
+                        logger.error(f"Voice conversion error: {e}")
+                        return None, f"❌ Voice conversion error: {str(e)}"
+                
+                convert_btn.click(
+                    fn=convert_with_status,
+                    inputs=[input_audio, target_audio],
+                    outputs=[converted_audio_output, convert_status_output],
+                    show_progress=True
+                )
+            
             with gr.Tab("⚙️ Settings & Info"):
                 gr.Markdown("### System Information")
                 
@@ -402,23 +475,21 @@ def launch_gradio():
                                         name = voice.get('name', f'Voice {i+1}')
                                         lang = voice.get('language', voice.get('lang', 'Unknown'))
                                         gender = voice.get('gender', 'Unknown')
-                                        info += f"- **{name}** ({lang}) - {gender}\n"
+                                        info += f"- **{name}** ({lang}, {gender})\n"
                                     else:
                                         info += f"- {voice}\n"
-                            else:
-                                info += "⚠️ No voices detected\n"
+                                if len(voices) > 10:
+                                    info += f"- ... and {len(voices) - 10} more voices\n"
                         else:
-                            info += "❌ **Chatterbox TTS**: Not available (using fallback)\n"
+                            info += "⚠️ **Chatterbox TTS**: Using fallback system\n"
                     except Exception as e:
-                        info += f"❌ **Error**: {str(e)}\n"
+                        info += f"❌ **TTS Error**: {str(e)}\n"
                     
-                    # Whisper info
-                    info += "\n## 🎧 Whisper System Status\n\n"
+                    # CUDA status
                     try:
                         import torch
                         if torch.cuda.is_available():
-                            info += "✅ **CUDA**: Available\n"
-                            info += f"🎮 **GPU**: {torch.cuda.get_device_name()}\n"
+                            info += f"🎮 **CUDA**: Available (Device: {torch.cuda.get_device_name()})\n"
                         else:
                             info += "💻 **CUDA**: Not available (using CPU)\n"
                     except:
@@ -433,7 +504,7 @@ def launch_gradio():
                     fn=lambda: get_system_info(),
                     outputs=system_info
                 )
-
+        
         logger.info("Starting Gradio interface on port 7861")
         demo.launch(
             server_name="0.0.0.0", 
@@ -475,7 +546,7 @@ def launch_simple_gradio():
                         return create_fallback_audio(text)
                 
                 synthesize_btn.click(simple_tts, inputs=text_input, outputs=audio_output)
-
+    
         logger.info("Starting simple Gradio interface on port 7861")
         demo.launch(server_name="0.0.0.0", server_port=7861, share=False)
     

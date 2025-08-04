@@ -1,12 +1,25 @@
 import tempfile
 import os
 import logging
+import random
+import numpy as np
+import torch
 
 logger = logging.getLogger(__name__)
 
 # Global variables for TTS system
 tts_system = None
+vc_system = None
 available_voices = []
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+def set_seed(seed: int):
+    """Set random seeds for reproducibility"""
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    random.seed(seed)
+    np.random.seed(seed)
 
 def initialize_tts():
     """Initialize TTS system and get available voices"""
@@ -16,222 +29,154 @@ def initialize_tts():
         return tts_system, available_voices
     
     try:
-        # Try different import patterns for chatterbox
-        logger.info("Attempting to initialize Chatterbox TTS...")
-        
-        # Method 1: Try direct TTS import
+        # Try ChatterboxTTS first (the production-grade option)
+        logger.info("Attempting to initialize ChatterboxTTS...")
         try:
-            from chatterbox import TTS
-            tts_system = TTS()
-            logger.info("Successfully imported chatterbox.TTS")
-        except (ImportError, AttributeError) as e:
-            logger.warning(f"Method 1 failed: {e}")
+            from chatterbox.tts import ChatterboxTTS
+            tts_system = ChatterboxTTS.from_pretrained(DEVICE)
+            logger.info(f"Successfully initialized ChatterboxTTS on {DEVICE}")
+            available_voices = ['ChatterboxTTS Default', 'ChatterboxTTS (with reference)']
+            return tts_system, available_voices
+        except (ImportError, Exception) as e:
+            logger.warning(f"ChatterboxTTS failed: {e}")
             
-            # Method 2: Try tts module import
-            try:
-                from chatterbox.tts import TTS
-                tts_system = TTS()
-                logger.info("Successfully imported chatterbox.tts.TTS")
-            except (ImportError, AttributeError) as e:
-                logger.warning(f"Method 2 failed: {e}")
-                
-                # Method 3: Try different class names
-                try:
-                    import chatterbox
-                    if hasattr(chatterbox, 'TTS'):
-                        tts_system = chatterbox.TTS()
-                        logger.info("Successfully initialized chatterbox.TTS()")
-                    elif hasattr(chatterbox, 'TextToSpeech'):
-                        tts_system = chatterbox.TextToSpeech()
-                        logger.info("Successfully initialized chatterbox.TextToSpeech()")
-                    elif hasattr(chatterbox, 'Synthesizer'):
-                        tts_system = chatterbox.Synthesizer()
-                        logger.info("Successfully initialized chatterbox.Synthesizer()")
-                    else:
-                        # List available attributes for debugging
-                        attrs = [attr for attr in dir(chatterbox) if not attr.startswith('_')]
-                        logger.error(f"No known TTS class found. Available attributes: {attrs}")
-                        return None, []
-                except (ImportError, AttributeError) as e:
-                    logger.warning(f"Method 3 failed: {e}")
-                    
-                    # Method 4: Try alternative TTS libraries as fallback
-                    try:
-                        logger.info("Trying alternative TTS libraries...")
-                        
-                        # Try Coqui TTS first (best quality)
-                        try:
-                            from TTS.api import TTS as CoquiTTS
-                            tts_system = CoquiTTS(model_name="tts_models/en/ljspeech/tacotron2-DDC")
-                            logger.info("Successfully initialized Coqui TTS")
-                            available_voices = ['LJSpeech', 'Default']
-                            return tts_system, available_voices
-                        except Exception as e:
-                            logger.warning(f"Coqui TTS failed: {e}")
-                        
-                        # Try gTTS (Google TTS) as backup
-                        try:
-                            from gtts import gTTS
-                            tts_system = gTTS
-                            logger.info("Fallback: Using gTTS for TTS")
-                            available_voices = ['Google TTS (English)', 'Google TTS (Spanish)', 'Google TTS (French)']
-                            return tts_system, available_voices
-                        except Exception as e:
-                            logger.warning(f"gTTS failed: {e}")
-                        
-                        # Try pyttsx3 as last resort
-                        try:
-                            import pyttsx3
-                            tts_system = pyttsx3.init()
-                            logger.info("Fallback: Using pyttsx3 for TTS")
-                            available_voices = []
-                            return tts_system, available_voices
-                        except ImportError:
-                            logger.warning("No TTS libraries available")
-                            return None, []
+        # Try Coqui TTS as backup
+        try:
+            from TTS.api import TTS as CoquiTTS
+            tts_system = CoquiTTS(model_name="tts_models/en/ljspeech/tacotron2-DDC")
+            logger.info("Successfully initialized Coqui TTS")
+            available_voices = ['LJSpeech', 'Default']
+            return tts_system, available_voices
+        except Exception as e:
+            logger.warning(f"Coqui TTS failed: {e}")
         
-        # Get available voices if TTS system was initialized
-        if tts_system:
-            try:
-                if hasattr(tts_system, 'list_voices'):
-                    available_voices = tts_system.list_voices() or []
-                elif hasattr(tts_system, 'getProperty') and hasattr(tts_system, 'setProperty'):
-                    # pyttsx3 style
-                    voices = tts_system.getProperty('voices')
-                    available_voices = [{'name': v.name, 'id': v.id} for v in voices] if voices else []
-                else:
-                    available_voices = []
-                    
-                logger.info(f"Found {len(available_voices)} voices")
-                if available_voices:
-                    voice_names = []
-                    for v in available_voices[:5]:
-                        if isinstance(v, dict):
-                            voice_names.append(v.get('name', str(v)))
-                        else:
-                            voice_names.append(str(v))
-                    logger.info(f"Sample voices: {voice_names}")
-            except Exception as e:
-                logger.warning(f"Could not list voices: {e}")
-                available_voices = []
-                
-        return tts_system, available_voices
-        
+        # Try gTTS (Google TTS) as backup
+        try:
+            from gtts import gTTS
+            tts_system = gTTS
+            logger.info("Fallback: Using gTTS for TTS")
+            available_voices = ['Google TTS (English)', 'Google TTS (Spanish)', 'Google TTS (French)']
+            return tts_system, available_voices
+        except Exception as e:
+            logger.warning(f"gTTS failed: {e}")
+            
+        # Try pyttsx3 as last resort
+        try:
+            import pyttsx3
+            tts_system = pyttsx3.init()
+            logger.info("Fallback: Using pyttsx3 for TTS")
+            available_voices = []
+            return tts_system, available_voices
+        except ImportError:
+            logger.warning("No TTS libraries available")
+            return None, []
+            
     except Exception as e:
         logger.error(f"Failed to initialize TTS: {e}")
         return None, []
 
-def get_voice_options():
-    """Get available voice options for Gradio dropdown"""
-    _, voices = initialize_tts()
+def initialize_vc():
+    """Initialize Voice Conversion system"""
+    global vc_system
     
+    if vc_system is not None:
+        return vc_system
+    
+    try:
+        logger.info("Attempting to initialize ChatterboxVC...")
+        from chatterbox.vc import ChatterboxVC
+        vc_system = ChatterboxVC.from_pretrained(DEVICE)
+        logger.info(f"Successfully initialized ChatterboxVC on {DEVICE}")
+        return vc_system
+    except (ImportError, Exception) as e:
+        logger.warning(f"ChatterboxVC failed: {e}")
+        return None
+
+def get_voice_options():
+    """Get available voice options for UI"""
+    tts, voices = initialize_tts()
     if not voices:
         return ["Default (Fallback)"]
-    
-    # Format voice options for dropdown
-    voice_options = []
-    for i, voice in enumerate(voices):
-        if isinstance(voice, dict):
-            name = voice.get('name', f'Voice {i+1}')
-            lang = voice.get('language', voice.get('lang', ''))
-            gender = voice.get('gender', '')
-            
-            # Create descriptive label
-            label = name
-            if lang:
-                label += f" ({lang})"
-            if gender:
-                label += f" - {gender}"
-                
-            voice_options.append(label)
-        else:
-            voice_options.append(str(voice))
-    
-    # Add fallback option
-    voice_options.append("Default (Fallback)")
-    return voice_options
+    return voices + ["Default (Fallback)"]
 
-def synthesize_tts(text, voice_selection="Default (Fallback)"):
+def synthesize_tts(text, voice_selection="Default", audio_prompt_path=None, **kwargs):
     """
-    Synthesize TTS using chatterbox library with voice selection
+    Synthesize text to speech using the initialized TTS system
     """
     if not text or not text.strip():
-        logger.warning("Empty text provided")
-        return create_fallback_audio("Please provide some text to synthesize.")
+        return create_fallback_audio("Please provide text to synthesize.")
     
-    tts, voices = initialize_tts()
-    
-    if tts is None or not voices:
-        logger.warning("TTS not available, using fallback")
+    tts, _ = initialize_tts()
+    if tts is None:
+        logger.warning("TTS not available")
         return create_fallback_audio(text)
     
     try:
-        # Select voice based on user choice
-        selected_voice = None
-        
-        if voice_selection == "Default (Fallback)" or not voice_selection:
-            selected_voice = voices[0] if voices else None
-        else:
-            # Find matching voice
-            for i, voice in enumerate(voices):
-                voice_name = voice.get('name', f'Voice {i+1}') if isinstance(voice, dict) else str(voice)
-                if voice_selection.startswith(voice_name):
-                    selected_voice = voice
-                    break
-            
-            # Fallback to first voice if not found
-            if selected_voice is None:
-                selected_voice = voices[0]
-        
-        if selected_voice is None:
-            logger.warning("No voice selected, using fallback")
-            return create_fallback_audio(text)
-        
-        logger.info(f"Using voice: {selected_voice}")
-        
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as out:
-            # Handle different TTS systems
-            if hasattr(tts, 'synthesize'):
-                # Chatterbox style
-                tts.synthesize(text=text, voice=selected_voice, output_path=out.name)
-            elif hasattr(tts, 'tts_to_file'):
-                # Coqui TTS style
-                tts.tts_to_file(text=text, file_path=out.name)
-            elif tts.__name__ == 'gTTS' if hasattr(tts, '__name__') else str(tts.__class__).find('gTTS') != -1:
-                # gTTS style
-                lang = 'en'
-                if 'spanish' in voice_selection.lower() or 'español' in voice_selection.lower():
-                    lang = 'es'
-                elif 'french' in voice_selection.lower() or 'français' in voice_selection.lower():
-                    lang = 'fr'
+        # Check if this is ChatterboxTTS
+        if hasattr(tts, 'generate') and hasattr(tts, 'sr'):
+            logger.info("Using ChatterboxTTS for synthesis")
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as out:
+                # Set default parameters for ChatterboxTTS
+                exaggeration = kwargs.get('exaggeration', 0.5)
+                temperature = kwargs.get('temperature', 0.8)
+                cfg_weight = kwargs.get('cfg_weight', 0.5)
+                min_p = kwargs.get('min_p', 0.05)
+                top_p = kwargs.get('top_p', 1.0)
+                repetition_penalty = kwargs.get('repetition_penalty', 1.2)
+                seed_num = kwargs.get('seed_num', 0)
                 
+                if seed_num != 0:
+                    set_seed(int(seed_num))
+                
+                # Generate audio using ChatterboxTTS
+                wav = tts.generate(
+                    text,
+                    audio_prompt_path=audio_prompt_path,
+                    exaggeration=exaggeration,
+                    temperature=temperature,
+                    cfg_weight=cfg_weight,
+                    min_p=min_p,
+                    top_p=top_p,
+                    repetition_penalty=repetition_penalty,
+                )
+                
+                # Save audio as numpy array
+                import soundfile as sf
+                sf.write(out.name, wav.squeeze(0).numpy(), tts.sr)
+                logger.info(f"ChatterboxTTS synthesis completed for text: {text[:50]}...")
+                return out.name
+                
+        # Handle other TTS systems (fallback)
+        elif hasattr(tts, 'tts_to_file'):
+            # Coqui TTS style
+            logger.info("Using Coqui TTS for synthesis")
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as out:
+                tts.tts_to_file(text=text, file_path=out.name)
+                return out.name
+                
+        elif tts.__name__ == 'gTTS' if hasattr(tts, '__name__') else str(tts.__class__).find('gTTS') != -1:
+            # gTTS style
+            logger.info("Using gTTS for synthesis")
+            lang = 'en'
+            if 'spanish' in voice_selection.lower():
+                lang = 'es'
+            elif 'french' in voice_selection.lower():
+                lang = 'fr'
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as out:
                 tts_obj = tts(text=text, lang=lang)
                 tts_obj.save(out.name)
-            elif hasattr(tts, 'say') and hasattr(tts, 'save_to_file'):
-                # pyttsx3 style
-                if isinstance(selected_voice, dict) and 'id' in selected_voice:
-                    tts.setProperty('voice', selected_voice['id'])
+                return out.name
+                
+        elif hasattr(tts, 'say') and hasattr(tts, 'save_to_file'):
+            # pyttsx3 style
+            logger.info("Using pyttsx3 for synthesis")
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as out:
                 tts.save_to_file(text, out.name)
                 tts.runAndWait()
-            elif hasattr(tts, 'say'):
-                # pyttsx3 without save_to_file
-                if isinstance(selected_voice, dict) and 'id' in selected_voice:
-                    tts.setProperty('voice', selected_voice['id'])
-                # Create audio using say method with file output
-                import wave
-                import numpy as np
-                tts.say(text)
-                tts.runAndWait()
-                # Note: pyttsx3 doesn't directly save to file in all versions
-                # This is a limitation - creating fallback audio
-                return create_fallback_audio(text)
-            else:
-                # Unknown TTS system, try generic approach
-                logger.warning("Unknown TTS system, using fallback")
-                return create_fallback_audio(text)
-            
-            logger.info(f"TTS synthesis completed for text: {text[:50]}...")
-            return out.name
+                return out.name
+        else:
+            logger.warning("Unknown TTS system, using fallback")
+            return create_fallback_audio(text)
             
     except Exception as e:
         logger.error(f"TTS Error: {e}")
@@ -239,7 +184,7 @@ def synthesize_tts(text, voice_selection="Default (Fallback)"):
 
 def clone_voice_from_audio(text, reference_audio_path, voice_name="Custom Voice"):
     """
-    Clone voice from reference audio and synthesize text
+    Clone voice from reference audio and synthesize text using ChatterboxTTS
     """
     if not text or not text.strip():
         return create_fallback_audio("Please provide text to synthesize.")
@@ -249,36 +194,37 @@ def clone_voice_from_audio(text, reference_audio_path, voice_name="Custom Voice"
         return synthesize_tts(text)  # Fallback to normal TTS
     
     tts, _ = initialize_tts()
-    
     if tts is None:
         logger.warning("TTS not available for voice cloning")
         return create_fallback_audio(text)
     
     try:
-        # Check if TTS system supports voice cloning
-        if hasattr(tts, 'clone_voice') or hasattr(tts, 'create_voice'):
-            logger.info(f"Attempting voice cloning from: {reference_audio_path}")
-            
+        # Check if this is ChatterboxTTS (supports voice cloning via reference)
+        if hasattr(tts, 'generate') and hasattr(tts, 'sr'):
+            logger.info(f"Attempting voice cloning with ChatterboxTTS from: {reference_audio_path}")
             with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as out:
-                # Try voice cloning methods
-                if hasattr(tts, 'clone_voice'):
-                    cloned_voice = tts.clone_voice(reference_audio_path, name=voice_name)
-                    tts.synthesize(text=text, voice=cloned_voice, output_path=out.name)
-                elif hasattr(tts, 'create_voice'):
-                    cloned_voice = tts.create_voice(reference_audio_path, name=voice_name)
-                    tts.synthesize(text=text, voice=cloned_voice, output_path=out.name)
-                else:
-                    # Try generic synthesis with reference
-                    tts.synthesize(text=text, reference_audio=reference_audio_path, output_path=out.name)
+                # Use ChatterboxTTS with audio prompt for voice cloning
+                wav = tts.generate(
+                    text,
+                    audio_prompt_path=reference_audio_path,
+                    exaggeration=0.5,
+                    temperature=0.8,
+                    cfg_weight=0.5,
+                    min_p=0.05,
+                    top_p=1.0,
+                    repetition_penalty=1.2,
+                )
                 
-                logger.info(f"Voice cloning completed for: {voice_name}")
+                # Save audio as numpy array
+                import soundfile as sf
+                sf.write(out.name, wav.squeeze(0).numpy(), tts.sr)
+                logger.info(f"Voice cloning completed using ChatterboxTTS for: {voice_name}")
                 return out.name
+                
+        # Try Coqui TTS voice cloning if available
         elif hasattr(tts, 'tts_to_file'):
-            # Coqui TTS might support voice cloning through different methods
             logger.info(f"Attempting voice cloning with Coqui TTS from: {reference_audio_path}")
-            
             with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as out:
-                # For Coqui TTS, we might use speaker encoding if available
                 try:
                     tts.tts_to_file(text=text, file_path=out.name, speaker_wav=reference_audio_path)
                     logger.info(f"Voice cloning completed using Coqui TTS for: {voice_name}")
@@ -294,10 +240,37 @@ def clone_voice_from_audio(text, reference_audio_path, voice_name="Custom Voice"
         logger.error(f"Voice cloning error: {e}")
         return synthesize_tts(text)  # Fallback to normal synthesis
 
+def convert_voice(audio_path, target_voice_path=None):
+    """
+    Convert voice using ChatterboxVC
+    """
+    if not audio_path or not os.path.exists(audio_path):
+        logger.warning("No input audio provided for voice conversion")
+        return None
+    
+    vc = initialize_vc()
+    if vc is None:
+        logger.warning("Voice conversion not available")
+        return None
+    
+    try:
+        logger.info(f"Converting voice from: {audio_path}")
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as out:
+            wav = vc.generate(audio_path, target_voice_path=target_voice_path)
+            
+            # Save audio as numpy array
+            import soundfile as sf
+            sf.write(out.name, wav.squeeze(0).numpy(), vc.sr)
+            logger.info("Voice conversion completed")
+            return out.name
+            
+    except Exception as e:
+        logger.error(f"Voice conversion error: {e}")
+        return None
+
 def create_fallback_audio(text):
     """
     Create a simple fallback audio file when TTS fails
-    For now creates silence, but could be enhanced with basic speech synthesis
     """
     try:
         # Try to use gTTS as a last resort if available
@@ -310,34 +283,17 @@ def create_fallback_audio(text):
                 return out.name
         except Exception as e:
             logger.warning(f"gTTS fallback failed: {e}")
-        
-        # Create a simple silence file as final fallback
+            
+        # Create a simple beep or silence as ultimate fallback
+        import numpy as np
+        import soundfile as sf
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as out:
-            # Write minimal WAV header for silence (1 second of silence at 22050 Hz)
-            sample_rate = 22050
-            duration = min(len(text) * 0.1, 5.0)  # Rough duration based on text length
-            num_samples = int(sample_rate * duration)
-            
-            # WAV header
-            out.write(b'RIFF')
-            out.write((36 + num_samples * 2).to_bytes(4, 'little'))  # File size
-            out.write(b'WAVE')
-            out.write(b'fmt ')
-            out.write((16).to_bytes(4, 'little'))  # Format chunk size
-            out.write((1).to_bytes(2, 'little'))   # Audio format (PCM)
-            out.write((1).to_bytes(2, 'little'))   # Channels
-            out.write(sample_rate.to_bytes(4, 'little'))  # Sample rate
-            out.write((sample_rate * 2).to_bytes(4, 'little'))  # Byte rate
-            out.write((2).to_bytes(2, 'little'))   # Block align
-            out.write((16).to_bytes(2, 'little'))  # Bits per sample
-            out.write(b'data')
-            out.write((num_samples * 2).to_bytes(4, 'little'))  # Data size
-            
-            # Write silence
-            out.write(b'\x00' * (num_samples * 2))
-            
-            logger.info(f"Created silence fallback audio for text: {text[:50]}...")
+            # Create 2 seconds of silence
+            silence = np.zeros(int(2 * 22050))  # 2 seconds at 22050 Hz
+            sf.write(out.name, silence, 22050)
+            logger.info("Created silence fallback audio")
             return out.name
+            
     except Exception as e:
-        logger.error(f"Failed to create fallback audio: {e}")
+        logger.error(f"Fallback audio creation failed: {e}")
         return None

@@ -26,8 +26,10 @@ COPY requirements.txt .
 RUN pip3 install --upgrade pip setuptools wheel --no-cache-dir && \
     # Install torch first with CPU-only to save space
     pip3 install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cpu && \
-    # Install remaining packages
-    pip3 install --no-cache-dir faster-whisper gradio uvicorn fastapi python-multipart numpy pyttsx3 requests && \
+    # Install core packages
+    pip3 install --no-cache-dir faster-whisper gradio uvicorn fastapi python-multipart numpy requests && \
+    # Install TTS libraries  
+    pip3 install --no-cache-dir pyttsx3 TTS gTTS && \
     pip3 cache purge 2>/dev/null || true && \
     # Clean up to save disk space
     rm -rf ~/.cache/pip /tmp/* /var/tmp/* /root/.cache

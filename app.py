@@ -310,9 +310,10 @@ def launch_gradio():
                         reference_audio = gr.Audio(
                             type="filepath",
                             label="Reference Audio (for voice cloning)",
-                            sources=["upload", "microphone"],
-                            info="Upload clear audio of the target speaker (5-30 seconds recommended)"
+                            sources=["upload", "microphone"]
                         )
+                        
+                        gr.Markdown("*Upload clear audio of the target speaker (5-30 seconds recommended)*")
                         
                         clone_voice_name = gr.Textbox(
                             label="Voice Name",

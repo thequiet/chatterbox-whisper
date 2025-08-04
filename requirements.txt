@@ -1,7 +1,7 @@
 faster-whisper
 torch
 torchaudio
-# Note: Chatterbox may not be available, will fallback to pyttsx3
+# Note: Chatterbox may not be available, will fallback to alternatives
 # git+https://github.com/resemble-ai/chatterbox.git
 gradio
 uvicorn
@@ -12,3 +12,6 @@ soundfile
 numpy
 requests
 pyttsx3
+# Alternative TTS libraries for better quality
+TTS
+gTTS

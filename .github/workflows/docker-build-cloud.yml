@@ -21,6 +21,18 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
+    - name: Free up disk space
+      run: |
+        # Free up disk space on GitHub Actions runners
+        sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
+        sudo apt-get remove -y '^aspnetcore-.*' || true
+        sudo apt-get remove -y '^dotnet-.*' || true
+        sudo apt-get remove -y '^llvm-.*' || true
+        sudo apt-get remove -y 'php.*' || true
+        sudo apt-get autoremove -y
+        sudo apt-get clean
+        df -h
+      
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
       with:
@@ -54,7 +66,7 @@ jobs:
       uses: docker/build-push-action@v5
       with:
         context: .
-        platforms: linux/amd64,linux/arm64
+        platforms: linux/amd64
         push: ${{ github.event_name != 'pull_request' }}
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}

@@ -1,38 +1,36 @@
-FROM nvidia/cuda:12.2.0-devel-ubuntu22.04
+# Use runtime image instead of devel to save space
+FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 
-# Install system dependencies including cuDNN
-RUN apt-get update && apt-get install -y \
+# Install minimal system dependencies in stages to save disk space
+RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     python3-dev \
     git \
     ffmpeg \
-    wget \
-    curl \
-    libgl1 \
-    libglib2.0-0 \
     libsndfile1 \
     libportaudio2 \
-    libasound2-dev \
-    build-essential \
-    libcudnn8 \
-    libcudnn8-dev \
     espeak-ng \
-    espeak-ng-data && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+    espeak-ng-data \
+    curl && \
+    apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 WORKDIR /app
 
 # Copy requirements first for better caching
 COPY requirements.txt .
 
-# Install Python packages with better error handling
-RUN pip3 install --upgrade pip setuptools wheel && \
-    pip3 install --no-cache-dir --no-input -r requirements.txt || \
-    (echo "Some packages failed, installing critical ones..." && \
-     pip3 install --no-cache-dir faster-whisper torch gradio uvicorn fastapi python-multipart librosa soundfile numpy requests pyttsx3)
+# Install Python packages efficiently to minimize disk usage
+RUN pip3 install --upgrade pip setuptools wheel --no-cache-dir && \
+    # Install torch first with CPU-only to save space
+    pip3 install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cpu && \
+    # Install remaining packages
+    pip3 install --no-cache-dir faster-whisper gradio uvicorn fastapi python-multipart numpy pyttsx3 requests && \
+    pip3 cache purge 2>/dev/null || true && \
+    # Clean up to save disk space
+    rm -rf ~/.cache/pip /tmp/* /var/tmp/* /root/.cache
 
 # Copy application files
 COPY app.py .

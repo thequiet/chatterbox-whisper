@@ -229,8 +229,7 @@ def launch_gradio():
                         voice_dropdown = gr.Dropdown(
                             choices=get_voice_options(),
                             value="Default (Fallback)",
-                            label="Select Voice",
-                            info="Choose from available voices"
+                            label="Select Voice"
                         )
                         # Refresh voices button
                         refresh_voices_btn = gr.Button("🔄 Refresh Voices", size="sm")
@@ -331,6 +330,7 @@ def launch_gradio():
             
             with gr.Tab("🎭 Voice Cloning"):
                 gr.Markdown("### Clone a voice from reference audio and generate speech")
+                gr.Markdown("**Instructions:** Upload an audio file of the voice you want to clone (3-30 seconds works best), then enter the text you want that voice to say.")
                 
                 with gr.Row():
                     with gr.Column():
@@ -343,8 +343,7 @@ def launch_gradio():
                         reference_audio = gr.Audio(
                             sources=["upload", "microphone"],
                             type="filepath",
-                            label="Reference Audio for Voice Cloning",
-                            info="Upload an audio file of the voice you want to clone"
+                            label="Reference Audio for Voice Cloning"
                         )
                         clone_voice_name = gr.Textbox(
                             label="Voice Name (Optional)",
@@ -398,20 +397,19 @@ def launch_gradio():
             
             with gr.Tab("🔄 Voice Conversion"):
                 gr.Markdown("### Convert one voice to another using ChatterboxVC")
+                gr.Markdown("**Instructions:** Upload input audio to convert, and optionally upload target voice audio. Leave target empty for default voice conversion.")
                 
                 with gr.Row():
                     with gr.Column():
                         input_audio = gr.Audio(
                             sources=["upload", "microphone"],
                             type="filepath",
-                            label="Input Audio",
-                            info="Audio to convert"
+                            label="Input Audio"
                         )
                         target_audio = gr.Audio(
                             sources=["upload", "microphone"],
                             type="filepath",
                             label="Target Voice Audio (Optional)",
-                            info="Leave empty for default voice conversion",
                             value=None
                         )
                         convert_btn = gr.Button("🔄 Convert Voice", variant="primary", size="lg")

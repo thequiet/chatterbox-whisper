@@ -33,10 +33,26 @@ def initialize_tts():
         logger.info("Attempting to initialize ChatterboxTTS...")
         try:
             from chatterbox.tts import ChatterboxTTS
-            tts_system = ChatterboxTTS.from_pretrained(DEVICE)
-            logger.info(f"Successfully initialized ChatterboxTTS on {DEVICE}")
-            available_voices = ['ChatterboxTTS Default', 'ChatterboxTTS (with reference)']
-            return tts_system, available_voices
+            import time
+            
+            # Add retry logic for rate limiting issues
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    logger.info(f"ChatterboxTTS initialization attempt {attempt + 1}/{max_retries}")
+                    tts_system = ChatterboxTTS.from_pretrained(DEVICE)
+                    logger.info(f"Successfully initialized ChatterboxTTS on {DEVICE}")
+                    available_voices = ['ChatterboxTTS Default', 'ChatterboxTTS (with reference)']
+                    return tts_system, available_voices
+                except Exception as e:
+                    if "429" in str(e) or "rate limit" in str(e).lower():
+                        wait_time = (attempt + 1) * 10  # Wait 10, 20, 30 seconds
+                        logger.warning(f"Rate limited by HuggingFace (attempt {attempt + 1}), waiting {wait_time}s: {e}")
+                        if attempt < max_retries - 1:
+                            time.sleep(wait_time)
+                            continue
+                    raise e
+                    
         except (ImportError, Exception) as e:
             logger.warning(f"ChatterboxTTS failed: {e}")
             

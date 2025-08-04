@@ -87,7 +87,24 @@ async def root():
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "services": ["transcription", "tts"]}
+    # Check TTS system status
+    try:
+        from chatterbox_demo import initialize_tts
+        tts, voices = initialize_tts()
+        tts_status = "available" if tts else "fallback"
+        voice_count = len(voices) if voices else 0
+    except Exception as e:
+        tts_status = "error"
+        voice_count = 0
+    
+    return {
+        "status": "healthy", 
+        "services": {
+            "transcription": "whisper",
+            "tts": tts_status,
+            "voices": voice_count
+        }
+    }
 
 @app.post("/transcribe")
 async def transcribe(file: UploadFile = File(...)):

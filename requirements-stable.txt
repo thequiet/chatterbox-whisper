@@ -1,0 +1,18 @@
+# Core packages for Docker image (tested and working)
+faster-whisper>=1.0.0
+torch>=2.0.0
+torchaudio>=2.0.0
+gradio>=4.0.0
+uvicorn[standard]>=0.24.0
+fastapi>=0.104.0
+python-multipart>=0.0.6
+librosa>=0.10.0
+soundfile>=0.12.0
+numpy>=1.24.0
+requests>=2.31.0
+
+# Text-to-speech fallback (reliable)
+pyttsx3>=2.90
+
+# Optional: Add chatterbox if needed (may require manual installation)
+# To install chatterbox manually: pip install git+https://github.com/resemble-ai/chatterbox.git

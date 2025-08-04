@@ -17,29 +17,82 @@ def initialize_tts():
     
     try:
         # Try different import patterns for chatterbox
+        logger.info("Attempting to initialize Chatterbox TTS...")
+        
+        # Method 1: Try direct TTS import
         try:
             from chatterbox import TTS
             tts_system = TTS()
-        except ImportError:
+            logger.info("Successfully imported chatterbox.TTS")
+        except (ImportError, AttributeError) as e:
+            logger.warning(f"Method 1 failed: {e}")
+            
+            # Method 2: Try tts module import
             try:
                 from chatterbox.tts import TTS
                 tts_system = TTS()
-            except ImportError:
+                logger.info("Successfully imported chatterbox.tts.TTS")
+            except (ImportError, AttributeError) as e:
+                logger.warning(f"Method 2 failed: {e}")
+                
+                # Method 3: Try different class names
                 try:
                     import chatterbox
-                    tts_system = chatterbox.TTS()
-                except ImportError:
-                    logger.warning("Chatterbox TTS not available")
-                    return None, []
+                    if hasattr(chatterbox, 'TTS'):
+                        tts_system = chatterbox.TTS()
+                        logger.info("Successfully initialized chatterbox.TTS()")
+                    elif hasattr(chatterbox, 'TextToSpeech'):
+                        tts_system = chatterbox.TextToSpeech()
+                        logger.info("Successfully initialized chatterbox.TextToSpeech()")
+                    elif hasattr(chatterbox, 'Synthesizer'):
+                        tts_system = chatterbox.Synthesizer()
+                        logger.info("Successfully initialized chatterbox.Synthesizer()")
+                    else:
+                        # List available attributes for debugging
+                        attrs = [attr for attr in dir(chatterbox) if not attr.startswith('_')]
+                        logger.error(f"No known TTS class found. Available attributes: {attrs}")
+                        return None, []
+                except (ImportError, AttributeError) as e:
+                    logger.warning(f"Method 3 failed: {e}")
+                    
+                    # Method 4: Try alternative TTS libraries as fallback
+                    try:
+                        logger.info("Trying alternative TTS libraries...")
+                        # Try pyttsx3 as fallback
+                        import pyttsx3
+                        tts_system = pyttsx3.init()
+                        logger.info("Fallback: Using pyttsx3 for TTS")
+                        available_voices = []
+                        return tts_system, available_voices
+                    except ImportError:
+                        logger.warning("No TTS libraries available")
+                        return None, []
         
-        # Get available voices
-        try:
-            available_voices = tts_system.list_voices() or []
-            logger.info(f"Found {len(available_voices)} voices: {[v.get('name', str(v)) for v in available_voices[:5]]}")
-        except Exception as e:
-            logger.warning(f"Could not list voices: {e}")
-            available_voices = []
-            
+        # Get available voices if TTS system was initialized
+        if tts_system:
+            try:
+                if hasattr(tts_system, 'list_voices'):
+                    available_voices = tts_system.list_voices() or []
+                elif hasattr(tts_system, 'getProperty') and hasattr(tts_system, 'setProperty'):
+                    # pyttsx3 style
+                    voices = tts_system.getProperty('voices')
+                    available_voices = [{'name': v.name, 'id': v.id} for v in voices] if voices else []
+                else:
+                    available_voices = []
+                    
+                logger.info(f"Found {len(available_voices)} voices")
+                if available_voices:
+                    voice_names = []
+                    for v in available_voices[:5]:
+                        if isinstance(v, dict):
+                            voice_names.append(v.get('name', str(v)))
+                        else:
+                            voice_names.append(str(v))
+                    logger.info(f"Sample voices: {voice_names}")
+            except Exception as e:
+                logger.warning(f"Could not list voices: {e}")
+                available_voices = []
+                
         return tts_system, available_voices
         
     except Exception as e:
@@ -115,8 +168,21 @@ def synthesize_tts(text, voice_selection="Default (Fallback)"):
         logger.info(f"Using voice: {selected_voice}")
         
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as out:
-            # Try synthesis with selected voice
-            tts.synthesize(text=text, voice=selected_voice, output_path=out.name)
+            # Handle different TTS systems
+            if hasattr(tts, 'synthesize'):
+                # Chatterbox style
+                tts.synthesize(text=text, voice=selected_voice, output_path=out.name)
+            elif hasattr(tts, 'say') and hasattr(tts, 'save_to_file'):
+                # pyttsx3 style
+                if isinstance(selected_voice, dict) and 'id' in selected_voice:
+                    tts.setProperty('voice', selected_voice['id'])
+                tts.save_to_file(text, out.name)
+                tts.runAndWait()
+            else:
+                # Unknown TTS system, try generic approach
+                logger.warning("Unknown TTS system, using fallback")
+                return create_fallback_audio(text)
+            
             logger.info(f"TTS synthesis completed for text: {text[:50]}...")
             return out.name
             

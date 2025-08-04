@@ -10,3 +10,5 @@ librosa
 soundfile
 numpy
 requests
+pyttsx3
+espeak-ng

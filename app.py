@@ -15,6 +15,72 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Chatterbox Whisper API", version="1.0.0")
 
+# Error handling wrapper functions for Gradio
+def safe_transcribe_audio(audio_path):
+    """Safe wrapper for transcription to prevent Gradio crashes"""
+    try:
+        if not audio_path:
+            return "Error: No audio file provided"
+        
+        if not os.path.exists(audio_path):
+            return "Error: Audio file not found"
+        
+        result = transcribe_audio(audio_path)
+        return result if result else "Error: Transcription failed"
+    except Exception as e:
+        logger.error(f"Gradio transcription error: {e}")
+        return f"Error: {str(e)}"
+
+def safe_synthesize_tts(text, voice_selection="Default (Fallback)"):
+    """Safe wrapper for TTS synthesis to prevent Gradio crashes"""
+    try:
+        if not text or not text.strip():
+            return None, "Error: Please provide text to synthesize"
+        
+        audio_path = synthesize_tts(text, voice_selection)
+        
+        if audio_path and os.path.exists(audio_path):
+            return audio_path, "✅ Speech generated successfully!"
+        else:
+            return None, "❌ Speech synthesis failed"
+    except Exception as e:
+        logger.error(f"Gradio TTS error: {e}")
+        return None, f"❌ Error: {str(e)}"
+
+def safe_clone_voice(text, reference_audio, voice_name="Custom Voice"):
+    """Safe wrapper for voice cloning to prevent Gradio crashes"""
+    try:
+        if not text or not text.strip():
+            return None, "Error: Please provide text to synthesize"
+        
+        if not reference_audio:
+            return safe_synthesize_tts(text)  # Fallback to normal TTS
+        
+        audio_path = clone_voice_from_audio(text, reference_audio, voice_name)
+        
+        if audio_path and os.path.exists(audio_path):
+            return audio_path, f"✅ Voice cloning completed for '{voice_name}'"
+        else:
+            return None, "❌ Voice cloning failed"
+    except Exception as e:
+        logger.error(f"Gradio voice cloning error: {e}")
+        return None, f"❌ Error: {str(e)}"
+
+def safe_refresh_voices():
+    """Safe wrapper to refresh voice options"""
+    try:
+        # Reset TTS system to reload voices
+        from chatterbox_demo import initialize_tts
+        global tts_system, available_voices
+        tts_system = None
+        available_voices = []
+        
+        new_choices = get_voice_options()
+        return gr.Dropdown.update(choices=new_choices, value=new_choices[0] if new_choices else "Default (Fallback)")
+    except Exception as e:
+        logger.error(f"Voice refresh error: {e}")
+        return gr.Dropdown.update(choices=["Default (Fallback)"], value="Default (Fallback)")
+
 @app.get("/")
 async def root():
     return {"message": "Chatterbox Whisper API is running", "status": "healthy"}
@@ -117,7 +183,7 @@ def launch_gradio():
                 )
                 
                 transcribe_btn.click(
-                    fn=transcribe_audio, 
+                    fn=safe_transcribe_audio, 
                     inputs=audio_input, 
                     outputs=transcription_output,
                     show_progress=True

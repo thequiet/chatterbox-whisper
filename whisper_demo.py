@@ -11,16 +11,28 @@ compute_type = "float16" if device == "cuda" else "int8"
 logger.info(f"Using device: {device}, compute_type: {compute_type}")
 
 try:
-    model = WhisperModel("base", device=device, compute_type=compute_type)
-    logger.info("Whisper model loaded successfully")
-except Exception as e:
-    logger.error(f"Error loading Whisper model with {device}: {e}")
-    # Fallback to CPU with different settings
-    try:
+    # Try with CUDA first if available
+    if device == "cuda":
+        try:
+            model = WhisperModel("base", device="cuda", compute_type="float16")
+            logger.info("Whisper model loaded successfully with CUDA")
+        except Exception as cuda_error:
+            logger.warning(f"CUDA initialization failed: {cuda_error}")
+            logger.info("Falling back to CPU...")
+            model = WhisperModel("base", device="cpu", compute_type="int8")
+            logger.info("Whisper model loaded successfully with CPU fallback")
+    else:
         model = WhisperModel("base", device="cpu", compute_type="int8")
-        logger.info("Fallback to CPU model successful")
+        logger.info("Whisper model loaded successfully with CPU")
+        
+except Exception as e:
+    logger.error(f"Error loading Whisper model: {e}")
+    # Final fallback attempt
+    try:
+        model = WhisperModel("tiny", device="cpu", compute_type="int8")
+        logger.info("Fallback to tiny CPU model successful")
     except Exception as e2:
-        logger.error(f"Failed to load CPU fallback model: {e2}")
+        logger.error(f"Failed to load any Whisper model: {e2}")
         model = None
 
 def transcribe_audio(audio_path):

@@ -1,8 +1,9 @@
-FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
+FROM nvidia/cuda:12.2.0-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 
+# Install system dependencies including cuDNN
 RUN apt-get update && apt-get install -y \
     python3-pip \
     python3-dev \
@@ -15,7 +16,11 @@ RUN apt-get update && apt-get install -y \
     libsndfile1 \
     libportaudio2 \
     libasound2-dev \
-    build-essential && \
+    build-essential \
+    libcudnn8 \
+    libcudnn8-dev \
+    espeak-ng \
+    espeak-ng-data && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

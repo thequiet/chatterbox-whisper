@@ -30,7 +30,9 @@ COPY requirements.txt .
 
 # Install Python packages with better error handling
 RUN pip3 install --upgrade pip setuptools wheel && \
-    pip3 install --no-cache-dir --no-input -r requirements.txt
+    pip3 install --no-cache-dir --no-input -r requirements.txt || \
+    (echo "Some packages failed, installing critical ones..." && \
+     pip3 install --no-cache-dir faster-whisper torch gradio uvicorn fastapi python-multipart librosa soundfile numpy requests pyttsx3)
 
 # Copy application files
 COPY app.py .

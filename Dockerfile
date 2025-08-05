@@ -38,7 +38,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip install torch==2.5.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121
 
 # Install ChatterboxTTS and core dependencies
-RUN pip install chatterbox-tts gradio faster-whisper uvicorn fastapi python-multipart runpod
+RUN pip install chatterbox-tts gradio faster-whisper whisper uvicorn fastapi python-multipart runpod
 
 # Create cache directories for HuggingFace models
 RUN mkdir -p /app/.cache/huggingface
